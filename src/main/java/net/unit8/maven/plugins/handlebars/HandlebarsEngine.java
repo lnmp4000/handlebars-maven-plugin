@@ -39,6 +39,7 @@ import java.util.List;
  * Handlebars script engine.
  *
  * @author kawasima
+ * @author Kellner
  */
 public class HandlebarsEngine {
     /**
