@@ -31,7 +31,9 @@ import org.mozilla.javascript.ScriptableObject;
 
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Handlebars script engine.
@@ -39,16 +41,24 @@ import java.util.Collection;
  * @author kawasima
  */
 public class HandlebarsEngine {
-    /** The cache directory of handlebars script*/
+    /**
+     * The cache directory of handlebars script
+     */
     private File cacheDir;
 
-    /** The encoding of handlebars templates */
+    /**
+     * The encoding of handlebars templates
+     */
     private String encoding;
 
-    /** The name of handlebars script */
+    /**
+     * The name of handlebars script
+     */
     private String handlebarsVersion;
 
-    /** The url of handlebars script */
+    /**
+     * The url of handlebars script
+     */
     private URL handlebarsUrl;
 
     private static final Log LOG = new SystemStreamLog();
@@ -70,12 +80,66 @@ public class HandlebarsEngine {
                 throw new MojoExecutionException("Invalid handlebars cache file.", e);
             }
         }
+
+
     }
 
-    public void precompile(Collection<File> templates, File outputFile, boolean purgeWhitespace) throws IOException {
+    private void doPrecompilationPartials(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
+        for (File template : templates) {
+            String data = FileUtils.readFileToString(template, encoding);
+
+            if (purgeWhitespace)
+                data = StringUtils.replaceEach(data, new String[]{"\n", "\r", "\t"}, new String[]{"", "", ""});
+
+
+            ScriptableObject.putProperty(global, "data", data);
+            Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
+            String name = FilenameUtils.getBaseName(template.getName());
+            out.println("Handlebars.registerPartial('" +
+                    name + "', " +
+                    "templates['" + name + "']=template(" + obj.toString() + "));");
+        }
+    }
+
+    private void doPrecompilation(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
+
+        for (File template : templates) {
+            String data = FileUtils.readFileToString(template, encoding);
+
+            if (purgeWhitespace)
+                data = StringUtils.replaceEach(data, new String[]{"\n", "\r", "\t"}, new String[]{"", "", ""});
+
+            ScriptableObject.putProperty(global, "data", data);
+            Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
+            out.println("templates['" + FilenameUtils.getBaseName(template.getName()) + "']=template(" + obj.toString() + ");");
+        }
+    }
+
+    private Collection[] filerCollections(Collection<File> files, String partial_prefix) {
+        boolean scanForPartials = partial_prefix!=null && partial_prefix.length() > 0;
+        List<File> partials = new ArrayList<File>();
+        List<File> templates = new ArrayList<File>();
+        for (File file : files) {
+            if (scanForPartials && file.getName().startsWith(partial_prefix)) {
+                partials.add(file);
+            } else {
+                templates.add(file);
+            }
+        }
+        Collection[] collections = new Collection[2];
+        collections[0] = partials;
+        collections[1] = templates;
+        return collections;
+    }
+
+    public void precompile(Collection<File> templates, File outputFile, boolean purgeWhitespace, String partialPrefix) throws IOException {
         Context cx = Context.enter();
         PrintWriter out = null;
-        LOG.info("precompile " + templates + " to " + outputFile);
+
+        Collection<File> filteredList_partials;
+        Collection<File> filteredList_templates;
+
+        LOG.info("precompiling " + templates + " to " + outputFile);
         try {
             out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(outputFile), encoding));
             out.print("(function() {\n  var template = Handlebars.template, "
@@ -86,23 +150,20 @@ public class HandlebarsEngine {
             cx.evaluateReader(global, in, handlebarsVersion, 1, null);
             IOUtils.closeQuietly(in);
 
-            for (File template : templates) {
-                String data = FileUtils.readFileToString(template, encoding);
+            Collection[] collections = filerCollections(templates, partialPrefix);
 
-                if (purgeWhitespace)
-                    data = StringUtils.replaceEach(data, new String[]{"\n", "\r", "\t"}, new String[]{"", "", ""});
+            filteredList_partials = collections[0];
+            filteredList_templates = collections[1];
 
-                ScriptableObject.putProperty(global, "data", data);
-                Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
-                out.println("templates['" + FilenameUtils.getBaseName(template.getName()) + "']=template(" + obj.toString() + ");");
-            }
+            doPrecompilationPartials(filteredList_partials, purgeWhitespace, global, cx, out);
+            doPrecompilation(filteredList_templates, purgeWhitespace, global, cx, out);
+
         } finally {
             Context.exit();
             if (out != null)
                 out.println("})();");
             IOUtils.closeQuietly(out);
         }
-
     }
 
     protected void fetchHandlebars(String handlebarsVersion) throws MojoExecutionException {
@@ -118,9 +179,9 @@ public class HandlebarsEngine {
                 ((HttpURLConnection) conn).disconnect();
                 conn = new URL(location).openConnection();
             }
-            LOG.info("Fetch handlebars.js from GitHub ("+ conn.getURL() +")");
+            LOG.info("Fetch handlebars.js from GitHub (" + conn.getURL() + ")");
             IOUtils.copy(conn.getInputStream(), new FileOutputStream(new File(cacheDir, handlebarsVersion)));
-        } catch(Exception e) {
+        } catch (Exception e) {
             throw new MojoExecutionException("Failure fetch handlebars.", e);
         } finally {
             if (conn != null) {

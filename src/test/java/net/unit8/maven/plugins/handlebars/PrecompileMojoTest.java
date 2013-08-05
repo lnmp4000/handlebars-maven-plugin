@@ -29,30 +29,19 @@ public class PrecompileMojoTest extends PrecompileMojo {
         mojo.handlebarsVersion =  "1.0.0";
 	}
 
-	@Test
-	public void testNotPreserveHierarchy() throws MojoExecutionException, MojoFailureException {
-		mojo.preserveHierarchy = false;
-		mojo.execute();
-		assertTrue(new File(mojo.outputDirectory, "index.js").exists());
-		assertTrue(new File(mojo.outputDirectory, "hoge.js").exists());
-		assertTrue(new File(mojo.outputDirectory, "hoge-fuga.js").exists());
-	}
 
-	@Test
-	public void testPreserveHierarchy() throws MojoExecutionException, MojoFailureException {
-		mojo.preserveHierarchy = true;
-		mojo.execute();
-		assertTrue(new File(mojo.outputDirectory, "templates.js").exists());
-		assertTrue(new File(mojo.outputDirectory, "hoge/hoge.js").exists());
-		assertTrue(new File(mojo.outputDirectory, "hoge/fuga/fuga.js").exists());
-	}
+    @Test
+    public void testPartials() throws MojoExecutionException, MojoFailureException{
+        mojo.partialPrefix = "partial_";
+        mojo.execute();
+      //  assertTrue(new File(mojo.outputDirectory, "partials.js").exists());
+    }
 
     @Test
     public void testPurgingWhitespace() throws MojoExecutionException, MojoFailureException, IOException {
-        mojo.preserveHierarchy = false;
         mojo.purgeWhitespace = true;
         mojo.execute();
-        File precompiled = new File(mojo.outputDirectory, "index.js");
+        File precompiled = new File(mojo.outputDirectory, "template.js");
         assertTrue(precompiled.exists());
 
         Context cx = Context.enter();

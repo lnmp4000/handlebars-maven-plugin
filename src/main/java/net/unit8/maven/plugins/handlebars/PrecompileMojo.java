@@ -21,6 +21,7 @@ package net.unit8.maven.plugins.handlebars;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -30,15 +31,19 @@ import org.apache.maven.project.MavenProject;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Handlebars precompile
  *
+ * @author kawasima
  * @phase compile
  * @goal precompile
- * @author kawasima
- *
  */
 public class PrecompileMojo extends AbstractMojo {
     /**
@@ -48,32 +53,35 @@ public class PrecompileMojo extends AbstractMojo {
      */
     protected MavenProject project;
 
-	/**
-	 * @parameter
-	 */
-	protected String[] templateExtensions;
+    /**
+     * @parameter
+     */
+    protected String[] templateExtensions;
 
-
+    /**
+     * @paremeter
+     */
+    protected String partialPrefix;
     /**
      * @parameter
      */
     protected Boolean purgeWhitespace;
 
     /**
-	 * @required
-	 * @parameter expression="${sourceDirectory}"
-	 */
-	protected File sourceDirectory;
+     * @required
+     * @parameter expression="${sourceDirectory}"
+     */
+    protected File sourceDirectory;
 
-	/**
-	 * @parameter expression="${outputDirectory}"
-	 */
-	protected File outputDirectory;
+    /**
+     * @parameter expression="${outputDirectory}"
+     */
+    protected File outputDirectory;
 
-	/**
-	 * @parameter expression="${preserveHierarchy}"
-	 */
-	protected Boolean preserveHierarchy;
+    /**
+     * @param
+     */
+    protected String outputFileName;
 
     /**
      * Handlebars script filename
@@ -89,28 +97,31 @@ public class PrecompileMojo extends AbstractMojo {
 
     private HandlebarsEngine handlebarsEngine;
 
-	public void execute() throws MojoExecutionException, MojoFailureException {
-		if (outputDirectory == null)
-			outputDirectory = new File(sourceDirectory.getAbsolutePath());
-		if (!outputDirectory.exists()) {
-			try {
-				FileUtils.forceMkdir(outputDirectory);
-			} catch (IOException e) {
-				throw new MojoExecutionException("Failure to make an output directory.", e);
-			}
-		}
-		if (preserveHierarchy == null)
-			preserveHierarchy = true;
-			
-		if (templateExtensions == null)
-			templateExtensions = new String[]{"html", "hbs"};
+    public void execute() throws MojoExecutionException, MojoFailureException {
+        if (outputDirectory == null)
+            outputDirectory = new File(sourceDirectory.getAbsolutePath());
+        if (!outputDirectory.exists()) {
+            try {
+                FileUtils.forceMkdir(outputDirectory);
+            } catch (IOException e) {
+                throw new MojoExecutionException("Failure to make an output directory.", e);
+            }
+        }
+        if (templateExtensions == null)
+            templateExtensions = new String[]{"html", "htm", "hbs"};
 
-        if(purgeWhitespace == null)
+        if (purgeWhitespace == null)
             purgeWhitespace = false;
+
+        if (partialPrefix == null)
+            partialPrefix = "";
+
+        if (outputFileName == null) {
+            outputFileName = "template.js";
+        }
 
         handlebarsEngine = new HandlebarsEngine(handlebarsVersion);
         handlebarsEngine.setEncoding(encoding);
-
 
 
         if (project != null) {
@@ -120,40 +131,25 @@ public class PrecompileMojo extends AbstractMojo {
         handlebarsEngine.startup();
 
         try {
-			visit(sourceDirectory);
-		} catch(IOException e) {
-			throw new MojoExecutionException("Failure to precompile handlebars templates.", e);
-		}
-	}
+            precompile(sourceDirectory);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Failure to precompile handlebars templates.", e);
+        }
 
-	protected void visit(File directory) throws IOException {
-		precompile(directory);
-		File[] children = directory.listFiles((FileFilter)DirectoryFileFilter.DIRECTORY);
-		for (File child : children) {
-			visit(child);
-		}
-	}
+    }
 
-	protected void precompile(File directory) throws IOException {
-		Collection<File> templates = FileUtils.listFiles(directory, templateExtensions, false);
-		if (templates.isEmpty())
-			return;
-        handlebarsEngine.precompile(templates, getOutputFile(directory), purgeWhitespace);
-	}
-	private File getOutputFile(File directory) throws IOException {
-		if (preserveHierarchy) {
-			String relativePath = sourceDirectory.toURI().relativize(directory.toURI()).getPath();
-			File outputBaseDir = new File(outputDirectory, relativePath);
-			if (!outputBaseDir.exists()) {
-				FileUtils.forceMkdir(outputBaseDir);
-			}
-			return new File(outputBaseDir, directory.getName() + ".js");
-		} else {
-			String relativePath = sourceDirectory.toURI().relativize(directory.toURI()).getPath();
-			String name = StringUtils.chomp(relativePath, "/").replace('/', '-');
-			if (StringUtils.isEmpty(name))
-				name = "index";
-			return new File(outputDirectory, name + ".js");
-		}
-	}
+    protected void precompile(File _startdir) throws IOException {
+        final List<File> templates = new ArrayList<File>();
+        Path startdir = Paths.get(_startdir.toURI());
+
+        Files.walkFileTree(startdir, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                templates.add(file.toFile());
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        handlebarsEngine.precompile(templates, new File(outputDirectory.getPath()+File.separator+outputFileName)/*getOutputFile(directory)*/, purgeWhitespace, partialPrefix);
+    }
+
 }
