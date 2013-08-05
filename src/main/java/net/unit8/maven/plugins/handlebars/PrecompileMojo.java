@@ -56,6 +56,7 @@ public class PrecompileMojo extends AbstractMojo {
     /**
      * @paremeter
      */
+
     protected String partialPrefix;
     /**
      * @parameter
@@ -74,7 +75,8 @@ public class PrecompileMojo extends AbstractMojo {
     protected File outputDirectory;
 
     /**
-     * @param
+     * @required
+     * @parameter
      */
     protected String outputFileName;
 
@@ -109,7 +111,7 @@ public class PrecompileMojo extends AbstractMojo {
             purgeWhitespace = false;
 
         if (partialPrefix == null)
-            partialPrefix = "";
+            partialPrefix = "partial_";
 
         if (outputFileName == null) {
             outputFileName = "template.js";
