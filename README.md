@@ -3,25 +3,39 @@ handlebars-maven-plugin
 
 A maven plugin for precompiling handlebars templates
 
+Originally written by:
+@kawasimi --> https://github.com/kawasima/handlebars-maven-plugin
+
 Introduction
 ------------
 
 handlebars-maven-plugin is used to precompile the handlebars templates of your project.
+With this fork, you can precompile partial templates as well.
 
-Goals
+Usage
 -----
-
-Goal                 |Description
----------------------|-------------------------------
-handlebars:precompile|Precompile handlebars templates
-
-### handlebars:precompile
-
-Full name
-:net.unit8.maven.plugins:handlebars-maven-plugin:0.2.0-SNAPSHOT:precompile
-
-Description
-:precomiple handlebars templates
+In your maven pom, use the plugin like this:
+    
+```
+ <plugin>
+      <groupId>net.unit8.maven.plugins</groupId>
+      <artifactId>handlebars-maven-plugin</artifactId>
+      <version>0.3.5</version>
+      <executions>
+      	<execution>
+        	<goals>
+            	<goal>precompile</goal>
+            </goals>
+        </execution>
+       </executions>
+       <configuration>
+       	<sourceDirectory>${project.basedir}/src/main/templates/</sourceDirectory>
+        <outputDirectory>${project.build.directory}/classes/template/</outputDirectory>
+        <outputFileName>template.js</outputFileName>
+        <partialPrefix>partial_</partialPrefix>
+        </configuration>
+</plugin>
+```
 
 #### Optional parameters
 
@@ -29,7 +43,8 @@ Name              |Type    |Description
 ------------------|--------|--------------------------------------
 sourceDirectory   |String  |The directory of handlebars templates
 outputDirectory   |String  |The directory of precompiled templates
-preserveHierarchy |Boolean |true if preserve the hierarchy of source directories.
+outputFileName    |String  |Name of the js File that will be generated (default is template.js)
+partialPrefix     |String  |Name of the prefix to detect it is a partial which must be processed in a different way. If nothing is set, every template will be handled as a normal template
 purgeWhitespace   |Boolean |true if whitespace [\r\n\t] needs to be purged. Defaults to false.
 encoding          |String  |charset of template files.
 templateExtensions|String[]|The extensions of handlebars templates
