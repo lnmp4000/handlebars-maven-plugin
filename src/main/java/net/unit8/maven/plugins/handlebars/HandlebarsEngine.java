@@ -81,8 +81,6 @@ public class HandlebarsEngine {
                 throw new MojoExecutionException("Invalid handlebars cache file.", e);
             }
         }
-
-
     }
 
     private void doPrecompilationPartials(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
@@ -121,7 +119,7 @@ public class HandlebarsEngine {
         List<File> partials = new ArrayList<File>();
         List<File> templates = new ArrayList<File>();
         for (File file : files) {
-            if (scanForPartials && file.getName().startsWith(partial_prefix)) {
+            if (scanForPartials && file.getName().toLowerCase().startsWith(partial_prefix.toLowerCase())) {
                 partials.add(file);
             } else {
                 templates.add(file);

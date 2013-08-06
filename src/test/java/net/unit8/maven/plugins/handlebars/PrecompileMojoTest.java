@@ -8,6 +8,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.tools.shell.Global;
 
 import java.io.File;
 import java.io.FileReader;
@@ -31,22 +32,52 @@ public class PrecompileMojoTest extends PrecompileMojo {
 
 
     @Test
-    public void testPartials() throws MojoExecutionException, MojoFailureException{
-        mojo.partialPrefix = "partial_";
+    public void testCreateTemplate() throws MojoExecutionException, MojoFailureException{
+        //mojo.partialPrefix = "partial_";
         mojo.execute();
-      //  assertTrue(new File(mojo.outputDirectory, "partials.js").exists());
+        assertTrue(new File(mojo.outputDirectory, "template.js").exists());
     }
 
     @Test
-    public void testPurgingWhitespace() throws MojoExecutionException, MojoFailureException, IOException {
+    public void testCreateTemplateWithOtherName() throws MojoExecutionException, MojoFailureException{
+        mojo.outputFileName = "test.js";
+        mojo.execute();
+        assertTrue(new File(mojo.outputDirectory, "test.js").exists());
+    }
+
+
+    @Test
+    public void testMainTemplate() throws MojoExecutionException, MojoFailureException, IOException {
         mojo.purgeWhitespace = true;
         mojo.execute();
         File precompiled = new File(mojo.outputDirectory, "template.js");
         assertTrue(precompiled.exists());
 
-        Context cx = Context.enter();
+        String evaluationString = "Handlebars.templates['root1']({hello:'I am '})";
+        Object obj = evaluateString(precompiled,evaluationString);
+
+        assertEquals("I am root1", obj.toString());
+    }
+
+    @Test
+    public void testPartialTemplate() throws MojoExecutionException, MojoFailureException, IOException {
+        mojo.partialPrefix = "partial_";
+        mojo.execute();
+        File precompiled = new File(mojo.outputDirectory, "template.js");
+        assertTrue(precompiled.exists());
+
+        String evaluationString = "Handlebars.templates['root3']({test_partial:'I am a Partial'})";
+        Object obj = evaluateString(precompiled,evaluationString);
+
+        assertTrue(obj.toString().indexOf("I am a Partial")!=-1);
+    }
+
+
+    private Object evaluateString(File precompiled, String evaluationStr) throws IOException{
         try {
+            Context cx = Context.enter();
             ScriptableObject global = cx.initStandardObjects();
+
             URL handlebarsUrl = getClass().getClassLoader().getResource("script/1.0.0");
             if (handlebarsUrl == null)
                 throw new IllegalArgumentException("can't find resource handlebars.");
@@ -63,17 +94,10 @@ public class PrecompileMojoTest extends PrecompileMojo {
             } finally {
                 IOUtils.closeQuietly(inSource);
             }
-
-            Object obj = cx.evaluateString(global, "Handlebars.templates['root1']({hello:'I am '})", "<inline>", 1, null);
-            assertEquals("I am root1", obj.toString());
+            Object obj = cx.evaluateString(global, evaluationStr, "<inline>", 1, null);
+            return obj;
         } finally {
             Context.exit();
         }
-
     }
-
-	@After
-	public void tearDown() throws IOException {
-		//FileUtils.forceDelete(mojo.outputDirectory);
-	}
 }

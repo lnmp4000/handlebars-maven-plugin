@@ -22,14 +22,18 @@ package net.unit8.maven.plugins.handlebars;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.junit.Test;
-
+import static org.junit.Assert.assertTrue;
 import java.io.File;
 
 public class HanldebarsEngineTest {
+
+
     @Test
     public void fetchHandlebars() throws MojoExecutionException {
         HandlebarsEngine engine = new HandlebarsEngine("1.0.rc.2");
         engine.setCacheDir(new File("target"));
         engine.fetchHandlebars("1.0.rc.2");
+
+       assertTrue(new File("target/1.0.rc.2").exists());
     }
 }

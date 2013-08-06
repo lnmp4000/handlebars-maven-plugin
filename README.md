@@ -12,6 +12,7 @@ Introduction
 handlebars-maven-plugin is used to precompile the handlebars templates of your project.
 With this fork, you can precompile partial templates as well.
 
+
 Usage
 -----
 In your maven pom, use the plugin like this:
@@ -20,7 +21,7 @@ In your maven pom, use the plugin like this:
  <plugin>
       <groupId>net.unit8.maven.plugins</groupId>
       <artifactId>handlebars-maven-plugin</artifactId>
-      <version>0.3.5</version>
+      <version>*VersionNumber*</version>
       <executions>
       	<execution>
         	<goals>
@@ -44,7 +45,7 @@ Name              |Type    |Description
 sourceDirectory   |String  |The directory of handlebars templates
 outputDirectory   |String  |The directory of precompiled templates
 outputFileName    |String  |Name of the js File that will be generated (default is template.js)
-partialPrefix     |String  |Name of the prefix to detect it is a partial which must be processed in a different way. If nothing is set, every template will be handled as a normal template
+partialPrefix     |String  |Name of the prefix to detect it is a partial which must be processed in a different way. If nothing is set, every template will be handled as a normal template (default is _partial)
 purgeWhitespace   |Boolean |true if whitespace [\r\n\t] needs to be purged. Defaults to false.
 encoding          |String  |charset of template files.
 templateExtensions|String[]|The extensions of handlebars templates
