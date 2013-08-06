@@ -83,6 +83,15 @@ public class HandlebarsEngine {
         }
     }
 
+    /**
+     * Partials must be precompiled BEFORE the actual main template Files
+     * @param templates List of partial templates
+     * @param purgeWhitespace true if purging whitespaces
+     * @param global
+     * @param cx
+     * @param out
+     * @throws IOException
+     */
     private void doPrecompilationPartials(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
         for (File template : templates) {
             String data = FileUtils.readFileToString(template, encoding);
@@ -100,6 +109,15 @@ public class HandlebarsEngine {
         }
     }
 
+    /**
+     * actual precompilation of the main Handlebar templates
+     * @param templates
+     * @param purgeWhitespace
+     * @param global
+     * @param cx
+     * @param out
+     * @throws IOException
+     */
     private void doPrecompilation(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
 
         for (File template : templates) {
@@ -114,7 +132,14 @@ public class HandlebarsEngine {
         }
     }
 
-    private Collection[] filerCollections(Collection<File> files, String partial_prefix) {
+    /**
+     * Filter the incomming template list and split them into 2 different lists.
+     * One contains the partials, the other contains the main templatges. Partials must be treated in a special way.
+     * @param files
+     * @param partial_prefix
+     * @return
+     */
+    private Collection[] filterCollections(Collection<File> files, String partial_prefix) {
         boolean scanForPartials = partial_prefix!=null && partial_prefix.length() > 0;
         List<File> partials = new ArrayList<File>();
         List<File> templates = new ArrayList<File>();
@@ -131,6 +156,15 @@ public class HandlebarsEngine {
         return collections;
     }
 
+    /**
+     * After fetching handlebars from github, start writing the outputFile and start the precompilation
+     * @param templates
+     * @param outputFile
+     * @param purgeWhitespace
+     * @param partialPrefix
+     * @throws IOException
+     * @see PrecompileMojo#startup
+     */
     public void precompile(Collection<File> templates, File outputFile, boolean purgeWhitespace, String partialPrefix) throws IOException {
         Context cx = Context.enter();
         PrintWriter out = null;
@@ -149,7 +183,7 @@ public class HandlebarsEngine {
             cx.evaluateReader(global, in, handlebarsVersion, 1, null);
             IOUtils.closeQuietly(in);
 
-            Collection[] collections = filerCollections(templates, partialPrefix);
+            Collection[] collections = filterCollections(templates, partialPrefix);
 
             filteredList_partials = collections[0];
             filteredList_templates = collections[1];
