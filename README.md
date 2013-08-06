@@ -1,10 +1,8 @@
 handlebars-maven-plugin
 =======================
 
-A maven plugin for precompiling handlebars templates
+A maven plugin for precompiling handlebars templates and merging it into a single js file.
 
-Originally written by:
-@kawasimi --> https://github.com/kawasima/handlebars-maven-plugin
 
 Introduction
 ------------
