@@ -19,18 +19,17 @@
 
 package net.unit8.maven.plugins.handlebars;
 
+import java.io.File;
+import java.io.FileFilter;
+import java.io.IOException;
+import java.util.Collection;
+
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.DirectoryFileFilter;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Handlebars precompile
@@ -41,112 +40,141 @@ import java.util.List;
  * @goal precompile
  */
 public class PrecompileMojo extends AbstractMojo {
-    /**
-     * @parameter default-value="${project}"
-     * @required
-     * @readonly
-     */
-    protected MavenProject project;
+	/**
+	 * @parameter default-value="${project}"
+	 * @required
+	 * @readonly
+	 */
+	protected MavenProject project;
 
-    /**
-     * @parameter
-     */
-    protected String[] templateExtensions;
+	/**
+	 * @parameter
+	 */
+	protected String[] templateExtensions;
 
-    /**
-     * @paremeter
-     */
+	/**
+	 * @parameter
+	 */
+	protected Boolean purgeWhitespace;
 
-    protected String partialPrefix;
-    /**
-     * @parameter
-     */
-    protected Boolean purgeWhitespace;
+	/**
+	 * @required
+	 * @parameter expression="${sourceDirectory}"
+	 */
+	protected File sourceDirectory;
 
-    /**
-     * @required
-     * @parameter expression="${sourceDirectory}"
-     */
-    protected File sourceDirectory;
+	/**
+	 * @parameter expression="${outputDirectory}"
+	 */
+	protected File outputDirectory;
 
-    /**
-     * @parameter expression="${outputDirectory}"
-     */
-    protected File outputDirectory;
+	/**
+	 * Handlebars script filename
+	 *
+	 * @parameter expression="${handlebarsVersion}" default-value="1.0.0"
+	 */
+	protected String handlebarsVersion;
 
-    /**
-     * @required
-     * @parameter
-     */
-    protected String outputFileName;
+	/**
+	 * Always Precompile
+	 *
+	 * @parameter expression="${alwaysPrecompile}" default-value=false
+	 */
+	protected Boolean alwaysPrecompile;
 
-    /**
-     * Handlebars script filename
-     *
-     * @parameter expression="${handlebarsVersion}" default-value="1.0.0"
-     */
-    protected String handlebarsVersion;
+	/**
+	 * @parameter expression="${encoding}" default-value="UTF-8"
+	 */
+	protected String encoding = "UTF-8";
 
-    /**
-     * @parameter expression="${encoding}" default-value="UTF-8"
-     */
-    protected String encoding = "UTF-8";
+	private HandlebarsEngine handlebarsEngine;
 
-    private HandlebarsEngine handlebarsEngine;
+	public void execute() throws MojoExecutionException, MojoFailureException {
+		if (outputDirectory == null)
+			outputDirectory = new File(sourceDirectory.getAbsolutePath());
+		if (!outputDirectory.exists()) {
+			try {
+				FileUtils.forceMkdir(outputDirectory);
+			} catch (IOException e) {
+				throw new MojoExecutionException("Failure to make an output directory.", e);
+			}
+		}
+		if (templateExtensions == null) {
+			templateExtensions = new String[] { "html", "htm", "hbs" };
+		}
 
-    public void execute() throws MojoExecutionException, MojoFailureException {
-        if (outputDirectory == null)
-            outputDirectory = new File(sourceDirectory.getAbsolutePath());
-        if (!outputDirectory.exists()) {
-            try {
-                FileUtils.forceMkdir(outputDirectory);
-            } catch (IOException e) {
-                throw new MojoExecutionException("Failure to make an output directory.", e);
-            }
-        }
-        if (templateExtensions == null)
-            templateExtensions = new String[]{"html", "htm", "hbs"};
+		if (purgeWhitespace == null) {
+			purgeWhitespace = false;
+		}
 
-        if (purgeWhitespace == null)
-            purgeWhitespace = false;
+		if (alwaysPrecompile == null) {
+			alwaysPrecompile = false;
+		}
 
-        if (partialPrefix == null)
-            partialPrefix = "partial_";
+		handlebarsEngine = new HandlebarsEngine(handlebarsVersion);
+		handlebarsEngine.setEncoding(encoding);
 
-        if (outputFileName == null) {
-            outputFileName = "template.js";
-        }
+		if (project != null) {
+			handlebarsEngine
+					.setCacheDir(new File(project.getBuild().getDirectory(), "handlebars-maven-plugins/script"));
+		}
+		handlebarsEngine.startup();
 
-        handlebarsEngine = new HandlebarsEngine(handlebarsVersion);
-        handlebarsEngine.setEncoding(encoding);
+		try {
+			visit(sourceDirectory);
+		} catch (IOException e) {
+			throw new MojoExecutionException("Failure to precompile handlebars templates.", e);
+		}
 
+	}
 
-        if (project != null) {
-            handlebarsEngine.setCacheDir(
-                    new File(project.getBuild().getDirectory(), "handlebars-maven-plugins/script"));
-        }
-        handlebarsEngine.startup();
+	protected void visit(File directory) throws IOException {
+		precompile(directory);
+		File[] children = directory.listFiles((FileFilter) DirectoryFileFilter.DIRECTORY);
+		for (File child : children) {
+			visit(child);
+		}
+	}
 
-        try {
-            precompile(sourceDirectory);
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failure to precompile handlebars templates.", e);
-        }
+	protected void precompile(File directory) throws IOException {
+		Collection<File> templates = FileUtils.listFiles(directory, templateExtensions, false);
+		if (templates.isEmpty()) {
+			return;
+		}
 
-    }
+		// flag to allow us to skip precompile if the files are older that the
+		// output
+		boolean skipPrecompile = (alwaysPrecompile != true);
 
-    protected void precompile(File _startdir) throws IOException {
-        final List<File> templates = new ArrayList<File>();
-        Path startdir = Paths.get(_startdir.toURI());
+		File outputFile = getOutputFile(directory);
+		if (!outputFile.exists()) {
+			// can't skip when the file doesn't exist
+			skipPrecompile = false;
+		}
 
-        Files.walkFileTree(startdir, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                templates.add(file.toFile());
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        handlebarsEngine.precompile(templates, new File(outputDirectory.getPath()+File.separator+outputFileName)/*getOutputFile(directory)*/, purgeWhitespace, partialPrefix);
-    }
+		if (skipPrecompile) {
+			long lastModified = outputFile.lastModified();
+			// check if template is newer than output
+			for (File template : templates) {
+				if (FileUtils.isFileNewer(template, lastModified)) {
+					skipPrecompile = false;
+					break;
+				}
+			}
+		}
+		if (!skipPrecompile) {
+			handlebarsEngine.precompile(templates, outputFile, purgeWhitespace);
+		} else {
+			getLog().info("Skip precompile for unchanged resource " + outputFile);
+		}
+	}
 
+	private File getOutputFile(File directory) throws IOException {
+		String relativePath = sourceDirectory.toURI().relativize(directory.toURI()).getPath();
+		File outputBaseDir = new File(outputDirectory, relativePath);
+		if (!outputBaseDir.exists()) {
+			FileUtils.forceMkdir(outputBaseDir);
+		}
+		return new File(outputBaseDir, directory.getName() + ".js");
+	}
 }
