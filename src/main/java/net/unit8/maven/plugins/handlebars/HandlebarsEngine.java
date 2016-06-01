@@ -19,6 +19,18 @@
 
 package net.unit8.maven.plugins.handlebars;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.Collection;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
@@ -29,12 +41,6 @@ import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptableObject;
 
-import java.io.*;
-import java.net.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-
 /**
  * Handlebars script engine.
  *
@@ -42,200 +48,132 @@ import java.util.List;
  * @author Kellner
  */
 public class HandlebarsEngine {
-    /**
-     * The cache directory of handlebars script
-     */
-    private File cacheDir;
+	/**
+	 * The cache directory of handlebars script
+	 */
+	private File cacheDir;
 
-    /**
-     * The encoding of handlebars templates
-     */
-    private String encoding;
+	/**
+	 * The encoding of handlebars templates
+	 */
+	private String encoding;
 
-    /**
-     * The name of handlebars script
-     */
-    private String handlebarsVersion;
+	/**
+	 * The name of handlebars script
+	 */
+	private String handlebarsVersion;
 
-    /**
-     * The url of handlebars script
-     */
-    private URL handlebarsUrl;
+	/**
+	 * The url of handlebars script
+	 */
+	private URL handlebarsUrl;
 
-    private static final Log LOG = new SystemStreamLog();
+	private static final Log LOG = new SystemStreamLog();
 
-    public HandlebarsEngine(String handlebarsVersion) throws MojoExecutionException {
-        this.handlebarsVersion = handlebarsVersion;
-    }
+	public HandlebarsEngine(String handlebarsVersion) throws MojoExecutionException {
+		this.handlebarsVersion = handlebarsVersion;
+	}
 
-    public void startup() throws MojoExecutionException {
-        handlebarsUrl = getClass().getClassLoader().getResource("script/1.0.0");
-        if (handlebarsUrl == null) {
-            File cacheFile = new File(cacheDir, handlebarsVersion);
-            if (!cacheFile.exists()) {
-                fetchHandlebars(handlebarsVersion);
-            }
-            try {
-                handlebarsUrl = cacheFile.toURI().toURL();
-            } catch (MalformedURLException e) {
-                throw new MojoExecutionException("Invalid handlebars cache file.", e);
-            }
-        }
-    }
+	public void startup() throws MojoExecutionException {
+		handlebarsUrl = getClass().getClassLoader().getResource("script/1.0.0");
+		if (handlebarsUrl == null) {
+			File cacheFile = new File(cacheDir, handlebarsVersion);
+			if (!cacheFile.exists()) {
+				fetchHandlebars(handlebarsVersion);
+			}
+			try {
+				handlebarsUrl = cacheFile.toURI().toURL();
+			} catch (MalformedURLException e) {
+				throw new MojoExecutionException("Invalid handlebars cache file.", e);
+			}
+		}
+	}
 
-    /**
-     * Partials must be precompiled BEFORE the actual main template Files
-     * @param templates List of partial templates
-     * @param purgeWhitespace true if purging whitespaces
-     * @param global
-     * @param cx
-     * @param out
-     * @throws IOException
-     */
-    private void doPrecompilationPartials(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
-        for (File template : templates) {
-            String data = FileUtils.readFileToString(template, encoding);
+	/**
+	 * After fetching handlebars from github, start writing the outputFile and
+	 * start the precompilation
+	 * 
+	 * @param templates
+	 * @param outputFile
+	 * @param purgeWhitespace
+	 * @param partialPrefix
+	 * @throws IOException
+	 * @see PrecompileMojo#startup
+	 */
+	public void precompile(Collection<File> templates, File outputFile, boolean purgeWhitespace) throws IOException {
+		Context cx = Context.enter();
+		PrintWriter out = null;
+		LOG.info("precompile " + templates + " to " + outputFile);
+		try {
+			out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(outputFile), encoding));
+			out.print("(function() {\n  var template = Handlebars.template, "
+					+ "templates = Handlebars.templates = Handlebars.templates || {};\n");
+			// Rhino for Handlebars Template
+			ScriptableObject global = cx.initStandardObjects();
+			InputStreamReader in = new InputStreamReader(handlebarsUrl.openStream());
+			cx.evaluateReader(global, in, handlebarsVersion, 1, null);
+			IOUtils.closeQuietly(in);
 
-            if (purgeWhitespace)
-                data = StringUtils.replaceEach(data, new String[]{"\n", "\r", "\t"}, new String[]{"", "", ""});
+			for (File template : templates) {
+				String data = FileUtils.readFileToString(template, encoding);
 
+				if (purgeWhitespace)
+					data = StringUtils.replaceEach(data, new String[] { "\n", "\r", "\t" },
+							new String[] { "", "", "" });
 
-            ScriptableObject.putProperty(global, "data", data);
-            Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
-            String name = FilenameUtils.getBaseName(template.getName());
-            out.println("Handlebars.registerPartial('" +
-                    name + "', " +
-                    "templates['" + name + "']=template(" + obj.toString() + "));");
-        }
-    }
+				ScriptableObject.putProperty(global, "data", data);
+				Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
+				out.println("templates['" + FilenameUtils.getBaseName(template.getName()) + "']=template("
+						+ obj.toString() + ");");
+			}
 
-    /**
-     * actual precompilation of the main Handlebar templates
-     * @param templates
-     * @param purgeWhitespace
-     * @param global
-     * @param cx
-     * @param out
-     * @throws IOException
-     */
-    private void doPrecompilation(Collection<File> templates, boolean purgeWhitespace, ScriptableObject global, Context cx, PrintWriter out) throws IOException {
+		} finally {
+			Context.exit();
+			if (out != null)
+				out.println("})();");
+			IOUtils.closeQuietly(out);
+		}
+	}
 
-        for (File template : templates) {
-            String data = FileUtils.readFileToString(template, encoding);
+	protected void fetchHandlebars(String handlebarsVersion) throws MojoExecutionException {
+		URLConnection conn = null;
 
-            if (purgeWhitespace)
-                data = StringUtils.replaceEach(data, new String[]{"\n", "\r", "\t"}, new String[]{"", "", ""});
+		try {
+			if (!cacheDir.exists()) {
+				FileUtils.forceMkdir(cacheDir);
+			}
+			conn = new URL("https://raw.github.com/wycats/handlebars.js/" + handlebarsVersion + "/dist/handlebars.js")
+					.openConnection();
+			if (((HttpURLConnection) conn).getResponseCode() == 302) {
+				String location = conn.getHeaderField("Location");
+				((HttpURLConnection) conn).disconnect();
+				conn = new URL(location).openConnection();
+			}
+			LOG.info("Fetch handlebars.js from GitHub (" + conn.getURL() + ")");
+			IOUtils.copy(conn.getInputStream(), new FileOutputStream(new File(cacheDir, handlebarsVersion)));
+		} catch (Exception e) {
+			throw new MojoExecutionException("Failure fetch handlebars.", e);
+		} finally {
+			if (conn != null) {
+				((HttpURLConnection) conn).disconnect();
+			}
+		}
+	}
 
-            ScriptableObject.putProperty(global, "data", data);
-            Object obj = cx.evaluateString(global, "Handlebars.precompile(String(data));", "<cmd>", 1, null);
-            out.println("templates['" + FilenameUtils.getBaseName(template.getName()) + "']=template(" + obj.toString() + ");");
-        }
-    }
+	public File getCacheDir() {
+		return cacheDir;
+	}
 
-    /**
-     * Filter the incomming template list and split them into 2 different lists.
-     * One contains the partials, the other contains the main templatges. Partials must be treated in a special way.
-     * @param files
-     * @param partial_prefix
-     * @return
-     */
-    private Collection[] filterCollections(Collection<File> files, String partial_prefix) {
-        boolean scanForPartials = partial_prefix!=null && partial_prefix.length() > 0;
-        List<File> partials = new ArrayList<File>();
-        List<File> templates = new ArrayList<File>();
-        for (File file : files) {
-            if (scanForPartials && file.getName().toLowerCase().startsWith(partial_prefix.toLowerCase())) {
-                partials.add(file);
-            } else {
-                templates.add(file);
-            }
-        }
-        Collection[] collections = new Collection[2];
-        collections[0] = partials;
-        collections[1] = templates;
-        return collections;
-    }
+	public void setCacheDir(File cacheDir) {
+		this.cacheDir = cacheDir;
+	}
 
-    /**
-     * After fetching handlebars from github, start writing the outputFile and start the precompilation
-     * @param templates
-     * @param outputFile
-     * @param purgeWhitespace
-     * @param partialPrefix
-     * @throws IOException
-     * @see PrecompileMojo#startup
-     */
-    public void precompile(Collection<File> templates, File outputFile, boolean purgeWhitespace, String partialPrefix) throws IOException {
-        Context cx = Context.enter();
-        PrintWriter out = null;
+	public String getEncoding() {
+		return encoding;
+	}
 
-        Collection<File> filteredList_partials;
-        Collection<File> filteredList_templates;
+	public void setEncoding(String encoding) {
+		this.encoding = encoding;
+	}
 
-        LOG.info("precompiling " + templates + " to " + outputFile);
-        try {
-            out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(outputFile), encoding));
-            out.print("(function() {\n  var template = Handlebars.template, "
-                    + "templates = Handlebars.templates = Handlebars.templates || {};\n");
-            // Rhino for Handlebars Template
-            ScriptableObject global = cx.initStandardObjects();
-            InputStreamReader in = new InputStreamReader(handlebarsUrl.openStream());
-            cx.evaluateReader(global, in, handlebarsVersion, 1, null);
-            IOUtils.closeQuietly(in);
-
-            Collection[] collections = filterCollections(templates, partialPrefix);
-
-            filteredList_partials = collections[0];
-            filteredList_templates = collections[1];
-
-            doPrecompilationPartials(filteredList_partials, purgeWhitespace, global, cx, out);
-            doPrecompilation(filteredList_templates, purgeWhitespace, global, cx, out);
-
-        } finally {
-            Context.exit();
-            if (out != null)
-                out.println("})();");
-            IOUtils.closeQuietly(out);
-        }
-    }
-
-    protected void fetchHandlebars(String handlebarsVersion) throws MojoExecutionException {
-        URLConnection conn = null;
-
-        try {
-            if (!cacheDir.exists()) {
-                FileUtils.forceMkdir(cacheDir);
-            }
-            conn = new URL("https://raw.github.com/wycats/handlebars.js/" + handlebarsVersion + "/dist/handlebars.js").openConnection();
-            if (((HttpURLConnection) conn).getResponseCode() == 302) {
-                String location = conn.getHeaderField("Location");
-                ((HttpURLConnection) conn).disconnect();
-                conn = new URL(location).openConnection();
-            }
-            LOG.info("Fetch handlebars.js from GitHub (" + conn.getURL() + ")");
-            IOUtils.copy(conn.getInputStream(), new FileOutputStream(new File(cacheDir, handlebarsVersion)));
-        } catch (Exception e) {
-            throw new MojoExecutionException("Failure fetch handlebars.", e);
-        } finally {
-            if (conn != null) {
-                ((HttpURLConnection) conn).disconnect();
-            }
-        }
-    }
-
-    public File getCacheDir() {
-        return cacheDir;
-    }
-
-    public void setCacheDir(File cacheDir) {
-        this.cacheDir = cacheDir;
-    }
-
-    public String getEncoding() {
-        return encoding;
-    }
-
-    public void setEncoding(String encoding) {
-        this.encoding = encoding;
-    }
 }

@@ -1,14 +1,7 @@
 package net.unit8.maven.plugins.handlebars;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugin.MojoFailureException;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.ScriptableObject;
-import org.mozilla.javascript.tools.shell.Global;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.FileReader;
@@ -16,8 +9,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import org.apache.commons.io.IOUtils;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.junit.Before;
+import org.junit.Test;
+import org.mozilla.javascript.Context;
+import org.mozilla.javascript.ScriptableObject;
 
 public class PrecompileMojoTest extends PrecompileMojo {
 	private PrecompileMojo mojo;
@@ -28,48 +26,30 @@ public class PrecompileMojoTest extends PrecompileMojo {
 		mojo.sourceDirectory = new File("src/test/resources/templates");
 		mojo.outputDirectory = new File("target/output");
         mojo.handlebarsVersion =  "1.0.0";
+        mojo.alwaysPrecompile = true;
+	}
+
+
+	@Test
+	public void testPreserveHierarchy() throws MojoExecutionException, MojoFailureException {
+		mojo.execute();
+		assertTrue(new File(mojo.outputDirectory, "templates.js").exists());
+		assertTrue(new File(mojo.outputDirectory, "hoge/hoge.js").exists());
+		assertTrue(new File(mojo.outputDirectory, "hoge/fuga/fuga.js").exists());
 	}
 
 
     @Test
-    public void testCreateTemplate() throws MojoExecutionException, MojoFailureException{
-        //mojo.partialPrefix = "partial_";
-        mojo.execute();
-        assertTrue(new File(mojo.outputDirectory, "template.js").exists());
-    }
-
-    @Test
-    public void testCreateTemplateWithOtherName() throws MojoExecutionException, MojoFailureException{
-        mojo.outputFileName = "test.js";
-        mojo.execute();
-        assertTrue(new File(mojo.outputDirectory, "test.js").exists());
-    }
-
-
-    @Test
-    public void testMainTemplate() throws MojoExecutionException, MojoFailureException, IOException {
+    public void testPurgingWhitespace() throws MojoExecutionException, MojoFailureException, IOException {
         mojo.purgeWhitespace = true;
         mojo.execute();
-        File precompiled = new File(mojo.outputDirectory, "template.js");
+        File precompiled = new File(mojo.outputDirectory, "templates.js");
         assertTrue(precompiled.exists());
 
         String evaluationString = "Handlebars.templates['root1']({hello:'I am '})";
         Object obj = evaluateString(precompiled,evaluationString);
 
         assertEquals("I am root1", obj.toString());
-    }
-
-    @Test
-    public void testPartialTemplate() throws MojoExecutionException, MojoFailureException, IOException {
-        mojo.partialPrefix = "partial_";
-        mojo.execute();
-        File precompiled = new File(mojo.outputDirectory, "template.js");
-        assertTrue(precompiled.exists());
-
-        String evaluationString = "Handlebars.templates['root3']({test_partial:'I am a Partial'})";
-        Object obj = evaluateString(precompiled,evaluationString);
-
-        assertTrue(obj.toString().indexOf("I am a Partial")!=-1);
     }
 
 
